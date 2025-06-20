@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Discord Drive</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      background: #0d1117;
+      color: #c9d1d9;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      min-height: 100vh;
+    }
+
+    h1 {
+      color: #58a6ff;
+      text-align: center;
+      font-weight: 700;
+      margin-bottom: 30px;
+    }
+
+    #dropZone {
+      border: 3px dashed #58a6ff;
+      border-radius: 15px;
+      width: 100%;
+      max-width: 400px;
+      height: 160px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      cursor: pointer;
+      user-select: none;
+      margin: 0 auto 20px;
+      transition: background-color 0.3s, border-color 0.3s, color 0.3s;
+      color: #8b949e;
+      font-weight: 600;
+      text-align: center;
+      padding: 10px;
+    }
+
+    #uploadBtn {
+      display: block;
+      margin: 0 auto 30px;
+      padding: 12px 25px;
+      font-size: 16px;
+      background: #238636;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: background 0.3s;
+    }
+
+    #uploadBtn:disabled {
+      background: #30363d;
+      cursor: not-allowed;
+    }
+
+    input[type="file"] {
+      display: none;
+    }
+
+    #uploadStatus, #status {
+      text-align: center;
+      font-weight: 600;
+      margin: 15px 0;
+      color: #58a6ff;
+    }
+
+    #filesTable {
+      width: 100%;
+      max-width: 900px;
+      margin: 0 auto;
+      border-collapse: collapse;
+      box-shadow: 0 0 20px #58a6ff44;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    #filesTable th, #filesTable td {
+      padding: 14px 20px;
+      text-align: left;
+    }
+
+    #filesTable thead {
+      background: #161b22;
+      border-bottom: 2px solid #30363d;
+    }
+
+    #filesTable tbody tr:nth-child(even) {
+      background: #21262d;
+    }
+
+    #filesTable tbody tr:hover {
+      background: #2f81f7;
+      color: white;
+      cursor: pointer;
+    }
+
+    a.download-link {
+      color: #58a6ff;
+      text-decoration: none;
+      font-weight: 600;
+      transition: color 0.3s;
+    }
+
+    a.download-link:hover {
+      color: #1c7ed6;
+      text-decoration: underline;
+    }
+
+    @media(max-width: 600px) {
+      #filesTable th, #filesTable td {
+        padding: 10px 8px;
+        font-size: 14px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>📁 Discord Drive</h1>
+
+  <div id="dropZone">Drag & Drop a file here or Click to Select</div>
+  <input type="file" id="fileInput" />
+  <button id="uploadBtn" disabled>Upload</button>
+  <div id="uploadStatus"></div>
+
+  <h1>📂 Stored Files</h1>
+  <div id="status">Loading files...</div>
+  <table id="filesTable" hidden>
+    <thead>
+      <tr>
+        <th>Filename</th>
+        <th>Uploaded At</th>
+        <th>Type</th>
+        <th>Download</th>
+      </tr>
+    </thead>
+    <tbody id="filesBody"></tbody>
+  </table>
+
+  <script>
+    const dropZone = document.getElementById("dropZone");
+    const fileInput = document.getElementById("fileInput");
+    const uploadBtn = document.getElementById("uploadBtn");
+    const uploadStatus = document.getElementById("uploadStatus");
+    let selectedFile = null;
+
+    dropZone.addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", () => {
+      const file = fileInput.files[0];
+      if (file) selectFile(file);
+    });
+
+    dropZone.addEventListener("dragover", e => {
+      e.preventDefault();
+      dropZone.style.backgroundColor = "#1c1f26";
+    });
+
+    dropZone.addEventListener("dragleave", () => {
+      dropZone.style.backgroundColor = "transparent";
+    });
+
+    dropZone.addEventListener("drop", e => {
+      e.preventDefault();
+      dropZone.style.backgroundColor = "transparent";
+      const file = e.dataTransfer.files[0];
+      if (file) selectFile(file);
+    });
+
+    function selectFile(file) {
+      const maxSize = 25 * 1024 * 1024; // 25MB
+      const maxNameLength = 10;
+
+      if (file.size > maxSize) {
+        dropZone.textContent = "❌ File too large (max 25MB)";
+        selectedFile = null;
+        uploadBtn.disabled = true;
+        return;
+      }
+
+      if (file.name.split(".")[0].length > maxNameLength) {
+        dropZone.textContent = "❌ Filename too long (max 6 characters)";
+        selectedFile = null;
+        uploadBtn.disabled = true;
+        return;
+      }
+
+      selectedFile = file;
+      dropZone.textContent = `✅ ${file.name} (${(file.size / 1024).toFixed(2)} KB)`;
+      uploadBtn.disabled = false;
+      uploadStatus.textContent = "";
+    }
+
+    uploadBtn.addEventListener("click", async () => {
+      if (!selectedFile) return;
+
+      const reader = new FileReader();
+      reader.onload = async function () {
+        const base64 = reader.result;
+        const res = await fetch("http://localhost:5000/upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: selectedFile.name,
+            filename: selectedFile.name,
+            filedata: base64
+          })
+        });
+
+        if (res.ok) {
+          uploadStatus.textContent = "✅ File uploaded successfully!";
+          dropZone.textContent = "Drag & Drop a file here or Click to Select";
+          selectedFile = null;
+          uploadBtn.disabled = true;
+          fileInput.value = "";
+          fetchFiles(); // reload table
+        } else {
+          uploadStatus.textContent = "❌ Upload failed.";
+        }
+      };
+      reader.readAsDataURL(selectedFile);
+    });
+
+    async function fetchFiles() {
+      try {
+        const res = await fetch("http://localhost:5000/files");
+        if (!res.ok) throw new Error("Failed to load files");
+        const files = await res.json();
+
+        const tbody = document.getElementById("filesBody");
+        const status = document.getElementById("status");
+        tbody.innerHTML = "";
+
+        if (files.length === 0) {
+          status.innerText = "No files found.";
+          return;
+        }
+
+        files.forEach(file => {
+          const tr = document.createElement("tr");
+
+          const nameTd = document.createElement("td");
+          nameTd.innerText = file.filename;
+          tr.appendChild(nameTd);
+
+          const dateTd = document.createElement("td");
+          const date = new Date(file.uploaded_at);
+          dateTd.innerText = date.toLocaleString();
+          tr.appendChild(dateTd);
+
+          const typeTd = document.createElement("td");
+          typeTd.innerText = file.content_type || "unknown";
+          tr.appendChild(typeTd);
+
+          const downloadTd = document.createElement("td");
+          const link = document.createElement("a");
+          link.href = file.download_url;
+          link.innerText = "⬇ Download";
+          link.className = "download-link";
+          link.target = "_blank";
+          downloadTd.appendChild(link);
+          tr.appendChild(downloadTd);
+
+          tbody.appendChild(tr);
+        });
+
+        document.getElementById("filesTable").hidden = false;
+        status.innerText = "";
+      } catch (err) {
+        document.getElementById("status").innerText = "Failed to load files.";
+        console.error(err);
+      }
+    }
+
+    fetchFiles();
+    setInterval(fetchFiles, 5000);
+  </script>
+</body>
+</html>
